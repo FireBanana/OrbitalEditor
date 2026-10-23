@@ -4,9 +4,8 @@ Reference for the editor's architecture, the rules it follows, and the engine
 features it is waiting on. Update this file whenever a milestone or gap changes.
 
 ## Ground rules
-- The editor is its own repo (`~/Work/OrbitalEditor`, github.com/FireBanana/OrbitalEditor). Nothing in the engine repo is changed by the editor work.
-- The engine is pulled in with `FetchContent`, pinned to a commit in `CMakeLists.txt`. For local development, build against the live engine:
-  `cmake -B build -DFETCHCONTENT_SOURCE_DIR_ORBITAL=~/Work/Orbital`. Bump the pin whenever the editor starts relying on a new engine commit.
+- The editor is its own repo (`~/Projects/OrbitalEditor`, github.com/FireBanana/OrbitalEditor). Nothing in the engine repo is changed by the editor work.
+- The engine is built from a local checkout at `../Orbital` (`add_subdirectory` into `build/orbital`; configure fails if it's missing). Since 2026-10-23 there is no remote fetch or pinned commit, so the editor always builds against whatever is in the engine working tree.
 - The editor uses the engine's **public API only**. No workarounds and no touching `Global::`.
   If something is missing, it becomes a **gap** (below), work pauses, and the engine owner implements it.
 - One responsibility per class. Panels depend only on `EditorContext`.
@@ -27,7 +26,7 @@ and panels dock around a see-through central node (`DockSpaceOverViewport` +
 ## Layout
 ```
 OrbitalEditor/
-  CMakeLists.txt                 top-level project: fetches Orbital (pinned), OrbitalEditor executable
+  CMakeLists.txt                 top-level project: adds ../Orbital, OrbitalEditor executable
   MEMORY.md                      this file
   src/
     main.cpp                     builds EditorApplication, calls run()
@@ -70,10 +69,10 @@ OrbitalEditor/
 | G9 | Later | Picking: no ID buffer/readback | passes | Click-to-select in the scene |
 | G10 | Later | No scene serialization format | engine | Save/load |
 | G11 | Open (minor) | `Pass` has no virtual destructor; no GPU cleanup or `vkDeviceWaitIdle` at shutdown | `pass.h`, `graphics.*` | Editor owns passes through `unique_ptr<ConcreteType>` for now (correct today), but polymorphic ownership would be UB |
-| G12 | Open | `ROOT="${CMAKE_SOURCE_DIR}/"` must become `${PROJECT_SOURCE_DIR}/` | root CMake | As a subproject, `CMAKE_SOURCE_DIR` is the editor's dir, so shader/asset paths break |
-| G13 | Open | `add_subdirectory(examples)` should only run when Orbital is top level (`if(PROJECT_IS_TOP_LEVEL)` or an option) | root CMake | Otherwise every editor build also compiles all examples |
-| G14 | Open | Remove `add_subdirectory(editor)` | root CMake | `editor/` moved out; the engine configure fails until this is removed |
-| G15 | Open | Push `7f0229c` ("add gui layers", contains G1) to `origin/main` | engine repo | The editor's pinned commit; a fresh clone can't fetch it until it's pushed |
+| G12 | Done | `ROOT="${CMAKE_SOURCE_DIR}/"` must become `${PROJECT_SOURCE_DIR}/` | root CMake | Fixed in the local engine 2026-10-23; the editor now finds the engine's shaders and runs |
+| G13 | Open (build time only) | `add_subdirectory(examples)` should only run when Orbital is top level (`if(PROJECT_IS_TOP_LEVEL)` or an option) | root CMake | Otherwise every editor build also compiles all examples |
+| G14 | Done | Remove `add_subdirectory(editor)` | root CMake | Gone from engine `main` as of 2026-10-23 |
+| G15 | Done | Push `7f0229c` ("add gui layers", contains G1) to `origin/main` | engine repo | On `main` as of 2026-10-23 (followed by `a78f46a`) |
 
 ## Traps
 - **T1 — ImGui callback order:** `ImGui_ImplGlfw_InitForVulkan(..., true)` chains onto whatever GLFW callbacks exist at that moment. Every `Window::register*` call must happen **before** GuiPass is constructed. `EditorApplication` creates GuiPass last for this reason.
@@ -86,5 +85,5 @@ OrbitalEditor/
 - **T6 — ImGui Begin/End:** `End()` must run even when `Begin()` returns false. `Panel::draw()` centralises this.
 
 ## Next step
-Repo split done. **G12–G14** are needed before the editor builds against the engine again (G15 for fresh clones).
-M0 verified. M1 needs **G2** (ImGui docking, pinned commit) and **G3** (ECS).
+Repo split done. As of 2026-10-23 the editor **builds and runs** against the local engine (`../Orbital`).
+G13 still open (examples compile with every editor build). M1 needs **G2** (ImGui docking, pinned commit) and **G3** (ECS).
