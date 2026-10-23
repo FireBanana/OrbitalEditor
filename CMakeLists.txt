@@ -23,6 +23,8 @@ add_executable(OrbitalEditor
     src/editor_context.h
     src/selection.h
     src/panels/panel.h
+    src/panels/dockspace_layout.h src/panels/dockspace_layout.cpp
+    src/panels/stats_panel.h src/panels/stats_panel.cpp
 )
 
 target_include_directories(OrbitalEditor PRIVATE src)

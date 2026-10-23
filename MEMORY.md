@@ -34,11 +34,11 @@ OrbitalEditor/
     editor_context.h             shared state (World&, Selection; later CommandHistory)
     selection.h                  currently selected Entity
     panels/panel.h               Panel base: draw() owns Begin/End, derived implement drawContents()
+    panels/dockspace_layout.*    main menu bar (View toggles panels) + passthrough dockspace; not a Panel
+    panels/stats_panel.*         FPS / frame time (entity count after G3)
   -- planned --
-    panels/dockspace_layout.*    menu bar + passthrough dockspace           (M1)
     panels/scene_hierarchy_panel.*  list/select/create/delete entities      (M1)
     panels/inspector_panel.*     edit Name/Transform of selection           (M1)
-    panels/stats_panel.*         frame time, entity count                   (M1)
     camera/editor_camera.*       fly camera when central node hovered       (M2)
     panels/asset_browser_panel.* browse assets/*.glb and import             (M3)
     commands/command.h, command_history.*, transform_command.h  undo/redo   (M4)
@@ -48,7 +48,7 @@ OrbitalEditor/
 | ID | Scope | Needs | Status |
 |----|-------|-------|--------|
 | M0 | Scaffolding: CMake target, EditorApplication, EditorContext, Selection, Panel base; `drawUi()` registered via `GuiPass::insertUi` | G0, G1 | **Done**. Builds with no editor warnings; runs (window, render loop, UI hook) |
-| M1 | Dockspace, menu bar, Hierarchy, Inspector, Stats | G1, G2, G3 | Waiting |
+| M1 | Dockspace, menu bar, Hierarchy, Inspector, Stats | G1, G2, G3 | **Partial** (2026-10-23): dockspace, menu bar, Stats (frame time) done; builds and runs, layout not yet checked visually. Hierarchy, Inspector, entity count wait on G3 |
 | M2 | Meshes as entities, Transform edits move meshes, editor fly camera | G4, G5, G6 | Waiting |
 | M3 | Asset browser + import | G7 (for delete) | Waiting |
 | M4 | Undo/redo, ImGuizmo gizmos (fetched in editor/CMakeLists.txt) | G5 matrices | Waiting |
@@ -59,7 +59,7 @@ OrbitalEditor/
 |---|--------|-----|-------|---------------------------|
 | G0 | Superseded | `add_subdirectory(editor)` in root `CMakeLists.txt` | root CMake | Replaced by the separate repo; see G14 |
 | G1 | Done | `GuiPass::insertUi(std::function<void()>)` stores callbacks and calls them between `NewFrame` and `Render` | `src/passes/gui_pass.*` | The editor registers `drawUi()` through it |
-| G2 | Open | ImGui fetched from `master` (no docking); docking flag never enabled | root CMake `GIT_TAG docking` + `ImGuiConfigFlags_DockingEnable` in GuiPass | Dockspace layout |
+| G2 | Done | ImGui from the `docking` branch; `ImGuiConfigFlags_DockingEnable` set in GuiPass | root CMake, `gui_pass.cpp` | Dockspace layout. Done 2026-10-23, but `GIT_TAG docking` is a moving branch, not a pinned commit (see T7) |
 | G3 | Open | ECS stub: `World` only creates IDs. No component storage, destroy or iteration; `Transform` has no scale/matrix | `src/ecs/ecs.h` | Hierarchy + Inspector need add/get/has/remove, iteration, destroy, a Name component |
 | G4 | Open | Rendering is not tied to the ECS: passes draw `std::vector<NativeModel>*` | passes + ecs | Inspector Transform edits must move meshes (e.g. MeshRenderer component read by the passes) |
 | G5 | Open | Camera lives inside `ForwardPass` (no getters, aspect hard-coded to 800/600) | `forward_pass.*` | Editor camera object and view/projection matrices (also for gizmos) |
@@ -73,6 +73,7 @@ OrbitalEditor/
 | G13 | Open (build time only) | `add_subdirectory(examples)` should only run when Orbital is top level (`if(PROJECT_IS_TOP_LEVEL)` or an option) | root CMake | Otherwise every editor build also compiles all examples |
 | G14 | Done | Remove `add_subdirectory(editor)` | root CMake | Gone from engine `main` as of 2026-10-23 |
 | G15 | Done | Push `7f0229c` ("add gui layers", contains G1) to `origin/main` | engine repo | On `main` as of 2026-10-23 (followed by `a78f46a`) |
+| G16 | Open (minor) | No way to close the window from code (`Window` has no `close()`/`requestClose()`) | `window.*` | File › Exit in the menu bar; left out until this exists |
 
 ## Traps
 - **T1 — ImGui callback order:** `ImGui_ImplGlfw_InitForVulkan(..., true)` chains onto whatever GLFW callbacks exist at that moment. Every `Window::register*` call must happen **before** GuiPass is constructed. `EditorApplication` creates GuiPass last for this reason.
@@ -85,5 +86,5 @@ OrbitalEditor/
 - **T6 — ImGui Begin/End:** `End()` must run even when `Begin()` returns false. `Panel::draw()` centralises this.
 
 ## Next step
-Repo split done. As of 2026-10-23 the editor **builds and runs** against the local engine (`../Orbital`).
-G13 still open (examples compile with every editor build). M1 needs **G2** (ImGui docking, pinned commit) and **G3** (ECS).
+M1 partial: dockspace, menu bar and Stats panel are in. The rest of M1 (Hierarchy, Inspector, entity count) needs **G3** (ECS).
+Optional engine items: pin ImGui `docking` to a commit (T7), G13 (examples build with the editor), G16 (window close).

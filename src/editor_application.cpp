@@ -1,4 +1,5 @@
 #include "editor_application.h"
+#include "panels/stats_panel.h"
 
 namespace {
 const glm::vec3 LIGHT_DIRECTION{0.3f, 0.6f, 0.4f};
@@ -24,6 +25,8 @@ EditorApplication::EditorApplication()
     m_guiPass->insertUi([this] { drawUi(); });
 
     m_graphicsPasses = {m_shadowPass.get(), m_forwardPass.get(), m_guiPass.get()};
+
+    m_panels.push_back(std::make_unique<StatsPanel>());
 }
 
 void EditorApplication::run()
@@ -39,6 +42,8 @@ void EditorApplication::update(double /*time*/, double /*deltaTime*/) {}
 
 void EditorApplication::drawUi()
 {
+    m_dockspaceLayout.draw(m_panels);
+
     for (auto &panel : m_panels)
         panel->draw(m_context);
 }

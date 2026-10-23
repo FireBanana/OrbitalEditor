@@ -2,6 +2,7 @@
 #define EDITOR_APPLICATION_H
 
 #include "editor_context.h"
+#include "panels/dockspace_layout.h"
 #include "panels/panel.h"
 #include <ecs/ecs.h>
 #include <graphics.h>
@@ -52,6 +53,7 @@ private:
     std::vector<Pass *> m_computePasses;
 
     EditorContext m_context;
+    DockspaceLayout m_dockspaceLayout;
     std::vector<std::unique_ptr<Panel>> m_panels;
 };
 
