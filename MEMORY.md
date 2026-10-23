@@ -1,0 +1,90 @@
+# Orbital Editor — Design Memory
+
+Reference for the editor's architecture, the rules it follows, and the engine
+features it is waiting on. Update this file whenever a milestone or gap changes.
+
+## Ground rules
+- The editor is its own repo (`~/Work/OrbitalEditor`, github.com/FireBanana/OrbitalEditor). Nothing in the engine repo is changed by the editor work.
+- The engine is pulled in with `FetchContent`, pinned to a commit in `CMakeLists.txt`. For local development, build against the live engine:
+  `cmake -B build -DFETCHCONTENT_SOURCE_DIR_ORBITAL=~/Work/Orbital`. Bump the pin whenever the editor starts relying on a new engine commit.
+- The editor uses the engine's **public API only**. No workarounds and no touching `Global::`.
+  If something is missing, it becomes a **gap** (below), work pauses, and the engine owner implements it.
+- One responsibility per class. Panels depend only on `EditorContext`.
+- Code style matches the engine: include guards, `m_` members, camelCase, 4-space indent.
+- Language standard is **C++20** (set in the editor's CMake; fastgltf also requires it, even though the engine sets 17).
+
+## Core idea
+1. The editor is an engine *application*, like `examples/fps`: Window + Graphics + passes + World + render loop.
+2. A UI layer of **panels** sits on top and edits **shared state** (`EditorContext`).
+3. Panels never reference each other; they communicate only through `EditorContext`.
+4. Editor-only behaviour (editor camera, gizmos, undo) lives in the editor and drives the engine via its API.
+
+## Viewport decision
+POC uses a **passthrough dockspace**: the scene renders to the full window as it does today,
+and panels dock around a see-through central node (`DockSpaceOverViewport` +
+`ImGuiDockNodeFlags_PassthruCentralNode`). An offscreen viewport texture comes later (gap G8).
+
+## Layout
+```
+OrbitalEditor/
+  CMakeLists.txt                 top-level project: fetches Orbital (pinned), OrbitalEditor executable
+  MEMORY.md                      this file
+  src/
+    main.cpp                     builds EditorApplication, calls run()
+    editor_application.h/.cpp    composition root; only class aware of Graphics/passes
+    editor_context.h             shared state (World&, Selection; later CommandHistory)
+    selection.h                  currently selected Entity
+    panels/panel.h               Panel base: draw() owns Begin/End, derived implement drawContents()
+  -- planned --
+    panels/dockspace_layout.*    menu bar + passthrough dockspace           (M1)
+    panels/scene_hierarchy_panel.*  list/select/create/delete entities      (M1)
+    panels/inspector_panel.*     edit Name/Transform of selection           (M1)
+    panels/stats_panel.*         frame time, entity count                   (M1)
+    camera/editor_camera.*       fly camera when central node hovered       (M2)
+    panels/asset_browser_panel.* browse assets/*.glb and import             (M3)
+    commands/command.h, command_history.*, transform_command.h  undo/redo   (M4)
+```
+
+## Milestones
+| ID | Scope | Needs | Status |
+|----|-------|-------|--------|
+| M0 | Scaffolding: CMake target, EditorApplication, EditorContext, Selection, Panel base; `drawUi()` registered via `GuiPass::insertUi` | G0, G1 | **Done**. Builds with no editor warnings; runs (window, render loop, UI hook) |
+| M1 | Dockspace, menu bar, Hierarchy, Inspector, Stats | G1, G2, G3 | Waiting |
+| M2 | Meshes as entities, Transform edits move meshes, editor fly camera | G4, G5, G6 | Waiting |
+| M3 | Asset browser + import | G7 (for delete) | Waiting |
+| M4 | Undo/redo, ImGuizmo gizmos (fetched in editor/CMakeLists.txt) | G5 matrices | Waiting |
+| M5 | Offscreen viewport, picking, save/load | G8, G9, G10 | Later |
+
+## Engine gaps (owner: engine; status: Open / Done)
+| # | Status | Gap | Where | Why the editor needs it |
+|---|--------|-----|-------|---------------------------|
+| G0 | Superseded | `add_subdirectory(editor)` in root `CMakeLists.txt` | root CMake | Replaced by the separate repo; see G14 |
+| G1 | Done | `GuiPass::insertUi(std::function<void()>)` stores callbacks and calls them between `NewFrame` and `Render` | `src/passes/gui_pass.*` | The editor registers `drawUi()` through it |
+| G2 | Open | ImGui fetched from `master` (no docking); docking flag never enabled | root CMake `GIT_TAG docking` + `ImGuiConfigFlags_DockingEnable` in GuiPass | Dockspace layout |
+| G3 | Open | ECS stub: `World` only creates IDs. No component storage, destroy or iteration; `Transform` has no scale/matrix | `src/ecs/ecs.h` | Hierarchy + Inspector need add/get/has/remove, iteration, destroy, a Name component |
+| G4 | Open | Rendering is not tied to the ECS: passes draw `std::vector<NativeModel>*` | passes + ecs | Inspector Transform edits must move meshes (e.g. MeshRenderer component read by the passes) |
+| G5 | Open | Camera lives inside `ForwardPass` (no getters, aspect hard-coded to 800/600) | `forward_pass.*` | Editor camera object and view/projection matrices (also for gizmos) |
+| G6 | Open | Input: one callback per event (re-register replaces); filters on `WantCapture*`; order-dependent with ImGui; cursor mode only via `Global::g_window` | `window.*` | Editor camera + UI sharing input; polling (`isKeyDown`, mouse delta) or multi-listener; `setCursorMode` |
+| G7 | Open | No destroy for `NativeModel`/`Texture`/`Buffer` | `graphics.*` | Deleting entities / re-import without leaks |
+| G8 | Later | Offscreen viewport: targets lack `SAMPLED_BIT`, render area fixed to swapchain, custom targets not resized, no ImGui texture registration | graphics/pass | Real Viewport panel |
+| G9 | Later | Picking: no ID buffer/readback | passes | Click-to-select in the scene |
+| G10 | Later | No scene serialization format | engine | Save/load |
+| G11 | Open (minor) | `Pass` has no virtual destructor; no GPU cleanup or `vkDeviceWaitIdle` at shutdown | `pass.h`, `graphics.*` | Editor owns passes through `unique_ptr<ConcreteType>` for now (correct today), but polymorphic ownership would be UB |
+| G12 | Open | `ROOT="${CMAKE_SOURCE_DIR}/"` must become `${PROJECT_SOURCE_DIR}/` | root CMake | As a subproject, `CMAKE_SOURCE_DIR` is the editor's dir, so shader/asset paths break |
+| G13 | Open | `add_subdirectory(examples)` should only run when Orbital is top level (`if(PROJECT_IS_TOP_LEVEL)` or an option) | root CMake | Otherwise every editor build also compiles all examples |
+| G14 | Open | Remove `add_subdirectory(editor)` | root CMake | `editor/` moved out; the engine configure fails until this is removed |
+| G15 | Open | Push `7f0229c` ("add gui layers", contains G1) to `origin/main` | engine repo | The editor's pinned commit; a fresh clone can't fetch it until it's pushed |
+
+## Traps
+- **T1 — ImGui callback order:** `ImGui_ImplGlfw_InitForVulkan(..., true)` chains onto whatever GLFW callbacks exist at that moment. Every `Window::register*` call must happen **before** GuiPass is constructed. `EditorApplication` creates GuiPass last for this reason.
+- **T2 — Frames in flight:** passes hold `std::vector<NativeModel>*`. Adding models is fine; never destroy one that a frame in flight (`FRAMES_IN_FLIGHT = 2`) may still use.
+- **T3 — Upload stalls:** `makeImage`/`makeBuffer` wait on a staging fence, so importing mid-loop works but stalls the frame. That's fine for the POC.
+- **T4 — Asset root:** `ROOT` points to the engine's source tree (once G12 is done); the editor uses `ROOT "assets/"`, so assets are the engine's `assets/`.
+- **T5 — `Window` constructor:** it uses `throw;` with no active exception, so a failed window creation calls `std::terminate`.
+- **T7 — Unpinned dependencies:** root CMake fetches fastgltf/imgui/glfw/volk/vma/box3d from moving branches. Any CMake re-configure can pull new upstream code. On 2026-10-12 a reconfigure pulled fastgltf `7e87cbf`, which broke the whole engine build (`simdjson.h: No such file or directory`). Pin `GIT_TAG`s to tags or commits. fastgltf is now pinned to `v0.9.1` (fixed); the others are still unpinned.
+- **T8 — UI runs last:** GuiPass is the last pass, so UI edits made in `drawUi()` reach the scene passes one frame late.
+- **T6 — ImGui Begin/End:** `End()` must run even when `Begin()` returns false. `Panel::draw()` centralises this.
+
+## Next step
+Repo split done. **G12–G14** are needed before the editor builds against the engine again (G15 for fresh clones).
+M0 verified. M1 needs **G2** (ImGui docking, pinned commit) and **G3** (ECS).
